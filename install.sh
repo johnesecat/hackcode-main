@@ -7,7 +7,7 @@ BOLD='\033[1m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-REPO="itwizardo/hackcode"
+REPO="johnesecat/hackcode-main"
 INSTALL_DIR="${HOME}/.local/bin"
 
 echo ""
