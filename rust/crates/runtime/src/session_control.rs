@@ -31,6 +31,10 @@ impl SessionStore {
     /// The on-disk layout becomes `<cwd>/.hackcode/sessions/<workspace_hash>/`.
     pub fn from_cwd(cwd: impl AsRef<Path>) -> Result<Self, SessionControlError> {
         let cwd = cwd.as_ref();
+        // #151: canonicalize cwd for consistent fingerprinting across
+        // equivalent path representations (e.g. on Windows, "C:\foo" vs
+        // "\\?\C:\foo"; on Unix, symlinks).
+        let canonical_cwd = fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
         let sessions_root = cwd
             .join(".hackcode")
             .join("sessions")
@@ -126,7 +130,7 @@ impl SessionStore {
                 return Ok(path);
             }
         }
-        if let Some(legacy_root) = self.legacy_sessions_root() {
+        for legacy_root in self.legacy_sessions_roots() {
             for extension in [PRIMARY_SESSION_EXTENSION, LEGACY_SESSION_EXTENSION] {
                 let path = legacy_root.join(format!("{session_id}.{extension}"));
                 if !path.exists() {
@@ -145,7 +149,7 @@ impl SessionStore {
     pub fn list_sessions(&self) -> Result<Vec<ManagedSessionSummary>, SessionControlError> {
         let mut sessions = Vec::new();
         self.collect_sessions_from_dir(&self.sessions_root, &mut sessions)?;
-        if let Some(legacy_root) = self.legacy_sessions_root() {
+        for legacy_root in self.legacy_sessions_roots() {
             self.collect_sessions_from_dir(&legacy_root, &mut sessions)?;
         }
         sort_managed_sessions(&mut sessions);
@@ -203,6 +207,23 @@ impl SessionStore {
             .parent()
             .filter(|parent| parent.file_name().is_some_and(|name| name == "sessions"))
             .map(Path::to_path_buf)
+    }
+
+    /// All legacy on-disk locations to consult when loading or listing
+    /// sessions. Includes the un-fingerprinted `.hackcode/sessions/` layout
+    /// returned by [`Self::legacy_sessions_root`] as well as the older
+    /// pre-rebrand `.claw/sessions/` directory so existing sessions saved
+    /// before the rename are still discoverable.
+    fn legacy_sessions_roots(&self) -> Vec<PathBuf> {
+        let mut roots = Vec::new();
+        if let Some(root) = self.legacy_sessions_root() {
+            roots.push(root);
+        }
+        let claw_legacy = self.workspace_root.join(".claw").join("sessions");
+        if !roots.iter().any(|r| r == &claw_legacy) {
+            roots.push(claw_legacy);
+        }
+        roots
     }
 
     fn validate_loaded_session(
@@ -524,7 +545,7 @@ fn format_missing_session_reference(reference: &str, sessions_root: &Path) -> St
         .and_then(|f| f.to_str())
         .unwrap_or("<unknown>");
     format!(
-        "session not found: {reference}\nHint: managed sessions live in .hackcode/sessions/. Try `{LATEST_SESSION_REFERENCE}` for the most recent session or `/session list` in the REPL."
+        "session not found: {reference}\nHint: managed sessions live in .hackcode/sessions/{fingerprint_dir}/. Try `{LATEST_SESSION_REFERENCE}` for the most recent session or `/session list` in the REPL."
     )
 }
 
@@ -535,7 +556,7 @@ fn format_no_managed_sessions(sessions_root: &Path) -> String {
         .and_then(|f| f.to_str())
         .unwrap_or("<unknown>");
     format!(
-        "no managed sessions found in .hackcode/sessions/\nStart `claw` to create a session, then rerun with `--resume {LATEST_SESSION_REFERENCE}`."
+        "no managed sessions found in .hackcode/sessions/{fingerprint_dir}/\nStart `hackcode` to create a session, then rerun with `--resume {LATEST_SESSION_REFERENCE}`."
     )
 }
 

@@ -35,10 +35,30 @@ fn main() {
         })
         .or_else(|| std::env::var("BUILD_DATE").ok())
         .unwrap_or_else(|| {
-            // Fall back to current date via `date` command
-            Command::new("date")
-                .args(["+%Y-%m-%d"])
-                .output()
+            // Fall back to current date. The Unix `date` binary supports
+            // `+%Y-%m-%d` but on Windows the built-in `date` command is
+            // interactive (it prompts to set the system date). Use
+            // PowerShell's `Get-Date` there so the build still succeeds in
+            // a stock Windows 10/11 environment without GNU coreutils.
+            #[cfg(windows)]
+            let cmd = {
+                let mut c = Command::new("powershell");
+                c.args([
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-Command",
+                    "(Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')",
+                ]);
+                c
+            };
+            #[cfg(not(windows))]
+            let cmd = {
+                let mut c = Command::new("date");
+                c.args(["-u", "+%Y-%m-%d"]);
+                c
+            };
+            let mut cmd = cmd;
+            cmd.output()
                 .ok()
                 .and_then(|o| {
                     if o.status.success() {

@@ -2,7 +2,8 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::process::Command;
+
+use crate::platform;
 
 const GREEN: &str = "\x1b[38;2;0;255;65m";
 const DIM: &str = "\x1b[90m";
@@ -44,49 +45,37 @@ const BREW_TOOLS: &[&str] = &[
 
 const PIP_TOOLS: &[&str] = &["impacket", "wpscan", "dnsrecon"];
 
+/// Tools we know are installable per-user without admin via `winget` or
+/// `scoop` on Windows 10/11. Anything not on this list is suggested as a
+/// download link instead of an automated installer line, so the wizard never
+/// needs elevation.
+const WINGET_TOOLS: &[(&str, &str)] = &[
+    ("nmap", "Insecure.Nmap"),
+    ("openssl", "ShiningLight.OpenSSL"),
+    ("curl", "cURL.cURL"),
+    ("git", "Git.Git"),
+    ("python3", "Python.Python.3"),
+    ("jq", "stedolan.jq"),
+];
+
 fn config_dir() -> PathBuf {
-    let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".config").join("hackcode")
+    platform::config_dir()
 }
 
 fn config_path() -> PathBuf {
     config_dir().join("config.json")
 }
 
-fn extra_path() -> String {
-    let current = env::var("PATH").unwrap_or_default();
-    format!("/opt/homebrew/bin:/usr/local/bin:/Applications/Ollama.app/Contents/Resources:{current}")
-}
-
 fn which(cmd: &str) -> bool {
-    Command::new("which")
-        .arg(cmd)
-        .env("PATH", extra_path())
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    platform::which(cmd)
 }
 
 fn exec(cmd: &str) -> String {
-    Command::new("/bin/bash")
-        .args(["-c", cmd])
-        .env("PATH", extra_path())
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default()
+    platform::exec_capture(cmd)
 }
 
 fn run_cmd(cmd: &str) -> bool {
-    Command::new("/bin/bash")
-        .args(["-l", "-c", cmd])
-        .env("PATH", extra_path())
-        .env("HOMEBREW_NO_AUTO_UPDATE", "1")
-        .stdin(std::process::Stdio::inherit())
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    platform::run_interactive(cmd)
 }
 
 fn ask(prompt: &str) -> String {
@@ -98,29 +87,11 @@ fn ask(prompt: &str) -> String {
 }
 
 fn get_ram_gb() -> u64 {
-    #[cfg(target_os = "macos")]
-    {
-        let output = exec("sysctl -n hw.memsize 2>/dev/null");
-        output.parse::<u64>().unwrap_or(0) / 1024 / 1024 / 1024
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let output = exec("grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}'");
-        output.parse::<u64>().unwrap_or(0) / 1024 / 1024
-    }
+    platform::ram_gb()
 }
 
 fn get_gpu() -> String {
-    #[cfg(target_os = "macos")]
-    {
-        let cpu = exec("sysctl -n machdep.cpu.brand_string 2>/dev/null");
-        if cpu.is_empty() { "Unknown".to_string() } else { cpu }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let gpu = exec("nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null");
-        if gpu.is_empty() { "CPU only".to_string() } else { gpu }
-    }
+    platform::gpu_label()
 }
 
 fn missing_tools(tools: &[&str]) -> Vec<String> {
@@ -153,7 +124,10 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
         println!("  Ollama {RED}✗{RESET} not found");
         let answer = ask("  Install Ollama now? [Y/n] ");
         if answer.to_lowercase() != "n" {
-            run_cmd("curl -fsSL https://ollama.ai/install.sh | sh");
+            run_cmd(platform::ollama_install_command());
+        }
+        if !which("ollama") {
+            println!("  {DIM}If automatic install failed: {}{RESET}", platform::ollama_install_hint());
         }
     }
     println!();
@@ -225,6 +199,7 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
             "FROM {model_id}\nRENDERER qwen3.5\nPARSER qwen3.5\nPARAMETER stop \"<|im_start|>\"\nPARAMETER stop \"<|im_end|>\"\nPARAMETER stop \"<|endoftext|>\"\nPARAMETER temperature 0.7\nPARAMETER num_ctx 32768\n"
         );
         let modelfile_path = config_dir().join("Modelfile");
+        let _ = fs::create_dir_all(config_dir());
         let _ = fs::write(&modelfile_path, &modelfile);
         run_cmd(&format!("ollama create hackcode-uncensored -f \"{}\"", modelfile_path.display()));
         println!("  {GREEN}✓{RESET} Model ready as {BOLD}hackcode-uncensored{RESET}");
@@ -236,6 +211,7 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
             "FROM {model_id}\nPARAMETER temperature 0.7\nPARAMETER num_ctx 32768\n"
         );
         let modelfile_path = config_dir().join("Modelfile");
+        let _ = fs::create_dir_all(config_dir());
         let _ = fs::write(&modelfile_path, &modelfile);
         run_cmd(&format!("ollama create hackcode-uncensored -f \"{}\"", modelfile_path.display()));
         println!("  {GREEN}✓{RESET} Model ready as {BOLD}hackcode-uncensored{RESET}");
@@ -248,6 +224,7 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
     println!("{GREEN}[Step 3/3]{RESET} {BOLD}Security Tools{RESET}");
 
     let is_macos = cfg!(target_os = "macos");
+    let is_windows = cfg!(target_os = "windows");
 
     if is_macos && which("brew") {
         let missing = missing_tools(BREW_TOOLS);
@@ -275,6 +252,53 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+    } else if is_windows {
+        // Windows: prefer winget (ships with Win10/11, user scope, no admin).
+        // We don't try to install everything — many pentest tools (sqlmap,
+        // wpscan, hydra, ...) ship as portable scripts or run best inside
+        // Kali on WSL. We surface clear hints instead of failing silently.
+        let has_winget = which("winget");
+        let has_scoop = which("scoop");
+        if has_winget || has_scoop {
+            let mut missing_pkgs: Vec<(&&str, &&str)> = WINGET_TOOLS
+                .iter()
+                .map(|(bin, pkg)| (bin, pkg))
+                .filter(|(bin, _)| !which(bin))
+                .collect();
+            if missing_pkgs.is_empty() {
+                println!("  {GREEN}✓{RESET} Common tools installed");
+            } else {
+                println!("\n  Missing tools available without admin: {}",
+                    missing_pkgs.iter().map(|(b, _)| **b).collect::<Vec<_>>().join(", "));
+                let cmd = if has_winget {
+                    let pkgs: Vec<String> = missing_pkgs
+                        .drain(..)
+                        .map(|(_, pkg)| format!("winget install --id {pkg} --accept-source-agreements --accept-package-agreements --silent --scope user"))
+                        .collect();
+                    pkgs.join("; ")
+                } else {
+                    let pkgs: Vec<String> = missing_pkgs
+                        .drain(..)
+                        .map(|(bin, _)| format!("scoop install {bin}"))
+                        .collect();
+                    pkgs.join("; ")
+                };
+                let answer = ask("  Install via per-user package manager? [Y/n] ");
+                if answer.to_lowercase() != "n" {
+                    run_cmd(&cmd);
+                }
+            }
+        } else {
+            println!(
+                "  {DIM}Install winget (ships with Windows 10/11) or scoop ({BOLD}https://scoop.sh{RESET}{DIM}) to auto-install common security tools per-user (no admin needed).{RESET}"
+            );
+        }
+        println!(
+            "  {DIM}For the full Kali toolchain on Windows, install Kali via WSL:{RESET}"
+        );
+        println!(
+            "  {BOLD}wsl --install -d kali-linux{RESET}"
+        );
     } else if which("apt") {
         println!("  {DIM}Install tools with: sudo apt install nmap gobuster nikto hydra sqlmap ...{RESET}");
     }

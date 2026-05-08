@@ -56,20 +56,48 @@ They locked Mythos away. We built something you can actually use.
 
 One command. That's it.
 
+**macOS / Linux** (bash):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itwizardo/hackcode/dev/install.sh | bash
+```
+
+**Windows 10 / 11** (native PowerShell — no admin, no WSL, no Cygwin required):
+
+```powershell
+iwr https://raw.githubusercontent.com/itwizardo/hackcode/dev/install.ps1 | iex
 ```
 
 Or build from source:
 
 ```bash
+# macOS / Linux
 git clone https://github.com/itwizardo/hackcode.git
 cd hackcode/rust
 cargo build --release -p rusty-claude-cli
 cp target/release/hackcode ~/.local/bin/
 ```
 
-Works on **macOS** (Apple Silicon & Intel) and **Linux** (x64 & ARM64). Runs natively on **Kali Linux**.
+```powershell
+# Windows (PowerShell)
+git clone https://github.com/itwizardo/hackcode.git
+cd hackcode\rust
+cargo build --release -p rusty-claude-cli
+$dst = "$env:LOCALAPPDATA\Programs\HackCode"
+New-Item -ItemType Directory -Path $dst -Force | Out-Null
+Copy-Item target\release\hackcode.exe $dst\
+[Environment]::SetEnvironmentVariable(
+    'Path',
+    "$([Environment]::GetEnvironmentVariable('Path','User'));$dst",
+    'User')
+```
+
+Works on **macOS** (Apple Silicon & Intel), **Linux** (x64 & ARM64, including
+Kali), and **Windows 10/11** (x64 & ARM64) directly in PowerShell. The Windows
+build is fully per-user: it installs to `%LOCALAPPDATA%\Programs\HackCode`,
+stores config under `%APPDATA%\hackcode`, never touches the machine PATH, and
+works inside isolated environments such as Windows Sandbox or restricted
+corporate VMs.
 
 ---
 
