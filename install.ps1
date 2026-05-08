@@ -45,7 +45,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$Repo = 'itwizardo/hackcode'
+$Repo = 'johnesecat/hackcode-main'
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\HackCode'
 $BinaryPath = Join-Path $InstallDir 'hackcode.exe'
 $ConfigDir = Join-Path $env:APPDATA 'hackcode'
