@@ -1919,9 +1919,13 @@ fn has_dangerous_paths(command: &str) -> bool {
 
         // Check for absolute paths
         if token.starts_with('/') || token.starts_with("~/") {
-            // Check if it's within CWD
-            let path =
-                PathBuf::from(token.replace('~', &std::env::var("HOME").unwrap_or_default()));
+            // Check if it's within CWD. Windows uses USERPROFILE in place
+            // of HOME for tilde expansion so policy enforcement stays
+            // consistent when a user types `~/...` in PowerShell.
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_default();
+            let path = PathBuf::from(token.replace('~', &home));
             if let Ok(cwd) = std::env::current_dir() {
                 if !path.starts_with(&cwd) {
                     return true; // Path outside workspace
@@ -5829,7 +5833,12 @@ fn config_home_dir() -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("HACKCODE_CONFIG_HOME") {
         return Ok(PathBuf::from(path));
     }
-    let home = std::env::var("HOME").map_err(|_| String::from("HOME is not set"))?;
+    // POSIX uses HOME; Windows 10/11 PowerShell uses USERPROFILE. Either is
+    // acceptable so isolated environments that only set one of them still
+    // resolve a stable per-user `.hackcode/` directory.
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| String::from("neither HOME nor USERPROFILE is set"))?;
     Ok(PathBuf::from(home).join(".hackcode"))
 }
 
@@ -5997,12 +6006,27 @@ fn detect_powershell_shell() -> std::io::Result<&'static str> {
 }
 
 fn command_exists(command: &str) -> bool {
-    std::process::Command::new("sh")
-        .arg("-lc")
-        .arg(format!("command -v {command} >/dev/null 2>&1"))
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+    // Windows ships neither `sh` nor `command -v`, so use `where.exe` (which
+    // is built into Windows 10/11 and resolvable in any PowerShell or cmd
+    // session). Unix continues to use `sh -lc command -v` so login PATH
+    // augmentations from the user's profile keep working.
+    #[cfg(windows)]
+    {
+        std::process::Command::new("where")
+            .arg(command)
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new("sh")
+            .arg("-lc")
+            .arg(format!("command -v {command} >/dev/null 2>&1"))
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
 }
 
 #[allow(clippy::too_many_lines)]

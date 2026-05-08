@@ -8,6 +8,7 @@
 )]
 mod init;
 mod input;
+mod platform;
 mod render;
 mod report;
 mod scanner;
@@ -112,6 +113,83 @@ type RuntimePluginStateBuildOutput = (
     Vec<RuntimeToolDefinition>,
 );
 
+/// #148: where the active model string came from. Surfaced as `model_source`
+/// in `--output-format json` and as a `Model source` line in text status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModelSource {
+    /// User passed `--model` on the command line.
+    Flag,
+    /// `ANTHROPIC_MODEL` environment variable.
+    Env,
+    /// `~/.config/hackcode/config.json` or per-workspace `claw.json`/`.claw.json`.
+    Config,
+    /// Built-in `DEFAULT_MODEL` fallback.
+    Default,
+}
+
+impl ModelSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Flag => "flag",
+            Self::Env => "env",
+            Self::Config => "config",
+            Self::Default => "default",
+        }
+    }
+}
+
+/// #148: full provenance for the resolved model string. `resolved` is the
+/// post-alias-resolution model id used by the runtime; `raw` is the user-
+/// supplied input before alias resolution (when one was supplied); `source`
+/// records the resolution path that won.
+#[derive(Debug, Clone)]
+struct ModelProvenance {
+    resolved: String,
+    raw: Option<String>,
+    source: ModelSource,
+}
+
+impl ModelProvenance {
+    /// Probe `ANTHROPIC_MODEL` -> per-workspace config -> hackcode config ->
+    /// `DEFAULT_MODEL`, recording the winning source. `default` is the
+    /// fallback model id used when no other source is set.
+    fn from_env_or_config_or_default(default: &str) -> Self {
+        if let Ok(env_model) = env::var("ANTHROPIC_MODEL") {
+            let trimmed = env_model.trim().to_string();
+            if !trimmed.is_empty() {
+                let resolved = resolve_model_alias_with_config(&trimmed);
+                return Self {
+                    resolved,
+                    raw: Some(trimmed),
+                    source: ModelSource::Env,
+                };
+            }
+        }
+        if let Some(config_model) = config_model_for_current_dir() {
+            let resolved = resolve_model_alias_with_config(&config_model);
+            return Self {
+                resolved,
+                raw: Some(config_model),
+                source: ModelSource::Config,
+            };
+        }
+        if let Some((Some(model), _)) = hackcode_config() {
+            if !model.is_empty() {
+                return Self {
+                    resolved: model.clone(),
+                    raw: Some(model),
+                    source: ModelSource::Config,
+                };
+            }
+        }
+        Self {
+            resolved: default.to_string(),
+            raw: None,
+            source: ModelSource::Default,
+        }
+    }
+}
+
 fn main() {
     if let Err(error) = run() {
         let message = error.to_string();
@@ -153,7 +231,8 @@ error: {message}"
 error: {message}
 
 Run `hackcode --help` for usage."
-            );
+                );
+            }
         }
         std::process::exit(1);
     }
@@ -391,7 +470,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 allow_broad_cwd,
             )?;
         }
-        CliAction::HelpTopic(topic) => print_help_topic(topic),
+        CliAction::HelpTopic {
+            topic,
+            output_format,
+        } => print_help_topic(topic, output_format)?,
         CliAction::Help { output_format } => print_help(output_format)?,
         CliAction::Setup => setup::run_setup()?,
         CliAction::Scan => {
@@ -502,7 +584,10 @@ enum CliAction {
         reasoning_effort: Option<String>,
         allow_broad_cwd: bool,
     },
-    HelpTopic(LocalHelpTopic),
+    HelpTopic {
+        topic: LocalHelpTopic,
+        output_format: CliOutputFormat,
+    },
     Setup,
     Scan,
     Update,
@@ -1547,9 +1632,7 @@ fn config_model_for_current_dir() -> Option<String> {
 /// Ensure Ollama is running and first-run setup has been completed.
 /// Called automatically before REPL or Prompt actions.
 fn ensure_hackcode_ready() -> Result<(), Box<dyn std::error::Error>> {
-    let config_path = env::var("HOME")
-        .map(|h| PathBuf::from(h).join(".config").join("hackcode").join("config.json"))
-        .unwrap_or_default();
+    let config_path = platform::config_dir().join("config.json");
 
     // First run — no config yet → run setup wizard
     if !config_path.exists() {
@@ -1565,15 +1648,11 @@ fn ensure_hackcode_ready() -> Result<(), Box<dyn std::error::Error>> {
 
     if !ollama_up {
         eprintln!("\x1b[38;2;0;255;65m[HackCode]\x1b[0m Starting Ollama...");
-        // Try to start ollama serve in the background
-        let extra = format!(
-            "/opt/homebrew/bin:/usr/local/bin:/Applications/Ollama.app/Contents/Resources:{}",
-            env::var("PATH").unwrap_or_default()
-        );
-        let _ = Command::new("/bin/bash")
-            .args(["-c", "ollama serve &>/dev/null &"])
-            .env("PATH", &extra)
-            .spawn();
+        // Try to start `ollama serve` in the background. The platform
+        // module dispatches to `bash -c '... &'` on Unix and to
+        // `Start-Process -WindowStyle Hidden` on Windows so this works
+        // natively in PowerShell without admin rights.
+        platform::spawn_ollama_serve();
 
         // Wait up to 8 seconds for it to come up
         for i in 0..16 {
@@ -1640,9 +1719,7 @@ fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("{green}[HackCode]{nc} Checking for updates...");
 
-    let src_dir = env::var("HOME")
-        .map(|h| PathBuf::from(h).join(".hackcode-src"))
-        .unwrap_or_else(|_| PathBuf::from("/tmp/.hackcode-src"));
+    let src_dir = platform::src_dir();
 
     // Clone or pull
     if src_dir.join(".git").exists() {
@@ -1702,13 +1779,14 @@ fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Build failed".into());
     }
 
-    // Install
-    let install_dir = env::var("HOME")
-        .map(|h| PathBuf::from(h).join(".local").join("bin"))
-        .unwrap_or_else(|_| PathBuf::from("/usr/local/bin"));
+    // Install. Per-user, no admin needed on any platform:
+    //   * Unix:    ~/.local/bin/hackcode
+    //   * Windows: %LOCALAPPDATA%\Programs\HackCode\hackcode.exe
+    let install_dir = platform::local_bin_dir();
     std::fs::create_dir_all(&install_dir)?;
-    let binary_src = build_dir.join("target").join("release").join("hackcode");
-    let binary_dst = install_dir.join("hackcode");
+    let exe = platform::binary_exe_name();
+    let binary_src = build_dir.join("target").join("release").join(exe);
+    let binary_dst = install_dir.join(exe);
     std::fs::copy(&binary_src, &binary_dst)?;
 
     // Get the new SHA
@@ -1724,11 +1802,13 @@ fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Read the HackCode-specific config at ~/.config/hackcode/config.json
-/// and return (model, baseURL) if present.
+/// Read the HackCode-specific config and return `(model, baseURL)` if present.
+///
+/// Resolves to:
+///   * `$HOME/.config/hackcode/config.json` on macOS / Linux
+///   * `%APPDATA%\hackcode\config.json` on Windows
 fn hackcode_config() -> Option<(Option<String>, Option<String>)> {
-    let home = env::var("HOME").ok()?;
-    let config_path = PathBuf::from(home).join(".config").join("hackcode").join("config.json");
+    let config_path = platform::config_dir().join("config.json");
     let raw = fs::read_to_string(&config_path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let model = parsed.get("model").and_then(|v| v.as_str()).map(String::from);
@@ -5807,6 +5887,19 @@ fn collect_sessions_from_dir(
                     None,
                 ),
             };
+        // #80: managed-session listings only have the saved JSONL on disk;
+        // they don't carry runtime pane info. Default to SavedOnly so callers
+        // see a stable lifecycle string without spuriously claiming a running
+        // process exists. Live lifecycle classification still happens for the
+        // current cwd via `latest_managed_session()` and `status_context()`.
+        let lifecycle = SessionLifecycleSummary {
+            kind: SessionLifecycleKind::SavedOnly,
+            pane_id: None,
+            pane_command: None,
+            pane_path: None,
+            workspace_dirty: false,
+            abandoned: false,
+        };
         sessions.push(ManagedSessionSummary {
             id,
             path,
@@ -5815,6 +5908,7 @@ fn collect_sessions_from_dir(
             message_count,
             parent_session_id,
             branch_name,
+            lifecycle,
         });
     }
     Ok(())
@@ -7130,11 +7224,10 @@ fn git_status_ok(args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn command_exists(name: &str) -> bool {
-    Command::new("which")
-        .arg(name)
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+    // Defer to the platform module so `where.exe` is used on Windows and
+    // `which` on Unix, with the same extra PATH segments the setup wizard
+    // sees (Homebrew, Ollama install dirs, our per-user bin dir).
+    platform::which(name)
 }
 
 fn write_temp_text_file(

@@ -1,4 +1,4 @@
-use std::process::Command;
+use crate::platform;
 
 const GREEN: &str = "\x1b[38;2;0;255;65m";
 const DIM: &str = "\x1b[90m";
@@ -80,18 +80,8 @@ const CATEGORIES: &[ToolCategory] = &[
     },
 ];
 
-fn extra_path() -> String {
-    let current = std::env::var("PATH").unwrap_or_default();
-    format!("/opt/homebrew/bin:/usr/local/bin:/usr/sbin:{current}")
-}
-
 fn which(cmd: &str) -> bool {
-    Command::new("which")
-        .arg(cmd)
-        .env("PATH", extra_path())
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    platform::which(cmd)
 }
 
 pub fn run_scanner() {
@@ -135,11 +125,36 @@ pub fn run_scanner() {
             .map(|(cmd, _)| *cmd)
             .collect();
 
-        if !missing.is_empty() && cfg!(target_os = "macos") && which("brew") {
-            println!(
-                "  {DIM}Install missing tools:{RESET}\n  {BOLD}brew install {}{RESET}\n",
-                missing.join(" ")
-            );
+        if !missing.is_empty() {
+            if cfg!(target_os = "macos") && which("brew") {
+                println!(
+                    "  {DIM}Install missing tools:{RESET}\n  {BOLD}brew install {}{RESET}\n",
+                    missing.join(" ")
+                );
+            } else if cfg!(target_os = "windows") {
+                // Windows hint: prefer winget (per-user, no admin) where
+                // available; fall back to pointing at WSL/Kali for the
+                // long-tail of pentest tooling that doesn't ship Windows
+                // binaries.
+                if which("winget") {
+                    println!(
+                        "  {DIM}Install with winget (per-user, no admin):{RESET}\n  {BOLD}winget install Insecure.Nmap; winget install Git.Git; winget install Python.Python.3{RESET}\n"
+                    );
+                } else if which("scoop") {
+                    println!(
+                        "  {DIM}Install with scoop:{RESET}\n  {BOLD}scoop install nmap git python jq curl openssl{RESET}\n"
+                    );
+                } else {
+                    println!(
+                        "  {DIM}Install winget or scoop, or run the full Kali toolchain via WSL:{RESET}\n  {BOLD}wsl --install -d kali-linux{RESET}\n"
+                    );
+                }
+            } else if which("apt") {
+                println!(
+                    "  {DIM}Install with apt:{RESET}\n  {BOLD}sudo apt install {}{RESET}\n",
+                    missing.join(" ")
+                );
+            }
         }
     }
 }

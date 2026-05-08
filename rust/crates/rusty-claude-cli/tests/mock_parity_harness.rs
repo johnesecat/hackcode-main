@@ -1,6 +1,11 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
+// PermissionsExt is unix-only; chmod call below is gated with `#[cfg(unix)]`
+// so this harness still compiles on Windows. The harness itself shells out to
+// `/bin/sh` so it only runs end-to-end on POSIX, but compilation must succeed
+// cross-platform for the rest of the test suite to build.
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -308,7 +313,7 @@ struct ScenarioReport {
 }
 
 fn run_case(case: ScenarioCase, workspace: &HarnessWorkspace, base_url: &str) -> ScenarioRun {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_claw"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_hackcode"));
     command
         .current_dir(&workspace.root)
         .env_clear()
@@ -426,11 +431,14 @@ fn prepare_plugin_fixture(workspace: &HarnessWorkspace) {
         "#!/bin/sh\nINPUT=$(cat)\nprintf '{\"plugin\":\"%s\",\"tool\":\"%s\",\"input\":%s}\\n' \"$CLAWD_PLUGIN_ID\" \"$CLAWD_TOOL_NAME\" \"$INPUT\"\n",
     )
     .expect("plugin script should write");
-    let mut permissions = fs::metadata(&script_path)
-        .expect("plugin script metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&script_path, permissions).expect("plugin script should be executable");
+    #[cfg(unix)]
+    {
+        let mut permissions = fs::metadata(&script_path)
+            .expect("plugin script metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script_path, permissions).expect("plugin script should be executable");
+    }
 
     fs::write(
         manifest_dir.join("plugin.json"),

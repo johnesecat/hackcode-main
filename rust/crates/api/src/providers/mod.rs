@@ -154,7 +154,11 @@ pub fn resolve_model_alias(model: &str) -> String {
                     "grok-2" => "grok-2",
                     _ => trimmed,
                 },
-                ProviderKind::OpenAi | ProviderKind::Ollama => trimmed,
+                ProviderKind::OpenAi => match *alias {
+                    "kimi" => "kimi-k2.5",
+                    _ => trimmed,
+                },
+                ProviderKind::Ollama => trimmed,
             })
         })
         .map_or_else(|| trimmed.to_string(), ToOwned::to_owned)
@@ -204,6 +208,17 @@ pub fn metadata_for_model(model: &str) -> Option<ProviderMetadata> {
             default_base_url: openai_compat::DEFAULT_DASHSCOPE_BASE_URL,
         });
     }
+    // Kimi (Moonshot AI) models route through DashScope's OpenAI-compatible
+    // endpoint. Accept both `kimi-*` (e.g. `kimi-k2.5`) and the namespaced
+    // `kimi/*` form (e.g. `kimi/kimi-k2.5`).
+    if canonical.starts_with("kimi-") || canonical.starts_with("kimi/") {
+        return Some(ProviderMetadata {
+            provider: ProviderKind::OpenAi,
+            auth_env: "DASHSCOPE_API_KEY",
+            base_url_env: "DASHSCOPE_BASE_URL",
+            default_base_url: openai_compat::DEFAULT_DASHSCOPE_BASE_URL,
+        });
+    }
     // Ollama local models — HuggingFace models pulled via `ollama pull hf.co/...`
     // and any model containing a colon (e.g. "llama3.2:1b", "gemma:7b")
     if canonical.starts_with("hf.co/")
@@ -229,6 +244,18 @@ pub fn metadata_for_model(model: &str) -> Option<ProviderMetadata> {
 #[must_use]
 pub fn detect_provider_kind(model: &str) -> ProviderKind {
     if let Some(metadata) = metadata_for_model(model) {
+        // The Ollama branch in `metadata_for_model` is heuristic — it matches
+        // any model name containing `:` or starting with common open-weight
+        // prefixes. If the user has *explicitly* configured OPENAI_BASE_URL
+        // (e.g. pointing at LM Studio, vLLM, or a remote OpenAI-compat
+        // gateway) and an OPENAI_API_KEY is present, that explicit
+        // configuration must win over the heuristic.
+        if metadata.provider == ProviderKind::Ollama
+            && std::env::var_os("OPENAI_BASE_URL").is_some()
+            && openai_compat::has_api_key("OPENAI_API_KEY")
+        {
+            return ProviderKind::OpenAi;
+        }
         return metadata.provider;
     }
     // When OPENAI_BASE_URL is set, the user explicitly configured an
@@ -257,7 +284,12 @@ pub fn detect_provider_kind(model: &str) -> ProviderKind {
 pub const fn model_family_identity_for_kind(kind: ProviderKind) -> runtime::ModelFamilyIdentity {
     match kind {
         ProviderKind::Anthropic => runtime::ModelFamilyIdentity::Claude,
-        ProviderKind::Xai | ProviderKind::OpenAi => runtime::ModelFamilyIdentity::Generic,
+        // Ollama hosts open-weight models (Qwen, Llama, DeepSeek, etc.)
+        // that share the same generic prompt envelope used for OpenAI-
+        // compatible providers, so classify them as `Generic` here.
+        ProviderKind::Xai | ProviderKind::OpenAi | ProviderKind::Ollama => {
+            runtime::ModelFamilyIdentity::Generic
+        }
     }
 }
 
