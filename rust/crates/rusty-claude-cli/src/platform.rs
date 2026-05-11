@@ -105,9 +105,17 @@ pub fn extra_path() -> String {
     #[cfg(windows)]
     {
         // Common Ollama install locations on Windows 10/11 plus our own
-        // per-user bin dir. We use ';' as the PATH separator on Windows.
+        // per-user bin dir and `cargo`'s default per-user install dir
+        // (rustup installs `cargo.exe` under `%USERPROFILE%\.cargo\bin` and
+        // only injects it into the user `PATH` on next logon — so freshly
+        // installed cargo wouldn't otherwise be reachable from the running
+        // shell). We use ';' as the PATH separator on Windows.
         let local = env::var("LOCALAPPDATA").unwrap_or_default();
         let programfiles = env::var("ProgramFiles").unwrap_or_default();
+        let userprofile = env::var("USERPROFILE")
+            .ok()
+            .or_else(|| env::var("HOME").ok())
+            .unwrap_or_default();
         let mut parts = Vec::new();
         if !local.is_empty() {
             parts.push(format!("{local}\\Programs\\Ollama"));
@@ -115,6 +123,9 @@ pub fn extra_path() -> String {
         }
         if !programfiles.is_empty() {
             parts.push(format!("{programfiles}\\Ollama"));
+        }
+        if !userprofile.is_empty() {
+            parts.push(format!("{userprofile}\\.cargo\\bin"));
         }
         parts.push(current);
         return parts.join(";");

@@ -179,8 +179,7 @@ impl SystemPromptBuilder {
             sections.push(get_hackcode_prompt());
         } else {
             sections.push(get_simple_intro_section(self.output_style_name.is_some()));
-            if let (Some(name), Some(prompt)) =
-                (&self.output_style_name, &self.output_style_prompt)
+            if let (Some(name), Some(prompt)) = (&self.output_style_name, &self.output_style_prompt)
             {
                 sections.push(format!("# Output Style: {name}\n{prompt}"));
             }

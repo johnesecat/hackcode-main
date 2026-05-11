@@ -2392,8 +2392,8 @@ pub fn handle_skills_slash_command(args: Option<&str>, cwd: &Path) -> std::io::R
                 || args.starts_with("describe ") =>
         {
             let name = args
-                .splitn(2, ' ')
-                .nth(1)
+                .split_once(' ')
+                .map(|x| x.1)
                 .unwrap_or_default()
                 .trim()
                 .to_lowercase();
@@ -2457,8 +2457,8 @@ pub fn handle_skills_slash_command_json(args: Option<&str>, cwd: &Path) -> std::
                 || args.starts_with("describe ") =>
         {
             let name = args
-                .splitn(2, ' ')
-                .nth(1)
+                .split_once(' ')
+                .map(|x| x.1)
                 .unwrap_or_default()
                 .trim()
                 .to_lowercase();
@@ -2622,6 +2622,7 @@ pub fn resolve_skill_path(cwd: &Path, skill: &str) -> std::io::Result<PathBuf> {
     ))
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn render_mcp_report_for(
     loader: &ConfigLoader,
     cwd: &Path,
@@ -2719,6 +2720,7 @@ fn render_mcp_unsupported_action_json(action: &str, hint: &str) -> Value {
     })
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn render_mcp_report_json_for(
     loader: &ConfigLoader,
     cwd: &Path,
@@ -3895,7 +3897,8 @@ fn render_agents_usage(unexpected: Option<&str>) -> String {
         "Agents".to_string(),
         "  Usage            /agents [list|help]".to_string(),
         "  Direct CLI       claw agents".to_string(),
-        "  Sources          .hackcode/agents, ~/.hackcode/agents, $HACKCODE_CONFIG_HOME/agents".to_string(),
+        "  Sources          .hackcode/agents, ~/.hackcode/agents, $HACKCODE_CONFIG_HOME/agents"
+            .to_string(),
     ];
     if let Some(args) = unexpected {
         lines.push(format!("  Unexpected       {args}"));
@@ -5424,8 +5427,9 @@ mod tests {
             super::handle_agents_slash_command(Some("help"), &cwd).expect("agents help");
         assert!(agents_help.contains("Usage            /agents [list|help]"));
         assert!(agents_help.contains("Direct CLI       claw agents"));
-        assert!(agents_help
-            .contains("Sources          .hackcode/agents, ~/.hackcode/agents, $HACKCODE_CONFIG_HOME/agents"));
+        assert!(agents_help.contains(
+            "Sources          .hackcode/agents, ~/.hackcode/agents, $HACKCODE_CONFIG_HOME/agents"
+        ));
 
         let agents_unexpected =
             super::handle_agents_slash_command(Some("show planner"), &cwd).expect("agents usage");
@@ -5437,7 +5441,8 @@ mod tests {
             .contains("Usage            /skills [list|install <path>|help|<skill> [args]]"));
         assert!(skills_help.contains("Alias            /skill"));
         assert!(skills_help.contains("Invoke           /skills help overview -> $help overview"));
-        assert!(skills_help.contains("Install root     $HACKCODE_CONFIG_HOME/skills or ~/.hackcode/skills"));
+        assert!(skills_help
+            .contains("Install root     $HACKCODE_CONFIG_HOME/skills or ~/.hackcode/skills"));
         assert!(skills_help.contains(".omc/skills"));
         assert!(skills_help.contains(".agents/skills"));
         assert!(skills_help.contains("~/.claude/skills/omc-learned"));

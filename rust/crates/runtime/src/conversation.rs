@@ -40,7 +40,7 @@ pub enum AssistantEvent {
     },
     Usage(TokenUsage),
     PromptCache(PromptCacheEvent),
-    /// The stop reason from the provider (e.g. "end_turn", "length").
+    /// The stop reason from the provider (e.g. `"end_turn"`, `"length"`).
     StopReason(String),
     MessageStop,
 }
@@ -403,9 +403,7 @@ where
                 // If the model stopped because it hit the output token
                 // limit (finish_reason = "length"), automatically inject
                 // a "continue" message so it picks up where it left off.
-                let hit_length_limit = stop_reason
-                    .as_deref()
-                    .map_or(false, |r| r == "length");
+                let hit_length_limit = stop_reason.as_deref() == Some("length");
                 if hit_length_limit {
                     self.session
                         .push_user_text("continue where you left off")
@@ -721,6 +719,7 @@ fn parse_auto_compaction_threshold(value: Option<&str>) -> u32 {
         .unwrap_or(DEFAULT_AUTO_COMPACTION_INPUT_TOKENS_THRESHOLD)
 }
 
+#[allow(clippy::type_complexity)]
 fn build_assistant_message(
     events: Vec<AssistantEvent>,
 ) -> Result<

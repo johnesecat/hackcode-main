@@ -117,11 +117,10 @@ pub fn generate_report(text: &str) -> Result<PathBuf, String> {
         .join(&filename);
 
     // Build the PDF
-    let pdf_bytes = build_pdf(&clean_text, &date)
-        .map_err(|e| format!("Failed to generate PDF: {e}"))?;
+    let pdf_bytes =
+        build_pdf(&clean_text, &date).map_err(|e| format!("Failed to generate PDF: {e}"))?;
 
-    std::fs::write(&output_path, &pdf_bytes)
-        .map_err(|e| format!("Failed to write PDF: {e}"))?;
+    std::fs::write(&output_path, &pdf_bytes).map_err(|e| format!("Failed to write PDF: {e}"))?;
 
     Ok(output_path)
 }
@@ -147,9 +146,7 @@ fn format_date(secs: u64) -> String {
     // Days since epoch to year/month/day (simplified Gregorian).
     let (year, month, day) = days_to_ymd(days);
 
-    format!(
-        "{year:04}-{month:02}-{day:02}-{hours:02}{minutes:02}{seconds:02}"
-    )
+    format!("{year:04}-{month:02}-{day:02}-{hours:02}{minutes:02}{seconds:02}")
 }
 
 fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
@@ -188,12 +185,7 @@ impl PdfBuilder {
         self.objects.len() // 1-based object number
     }
 
-    fn build(
-        &mut self,
-        pages_obj: usize,
-        page_objs: &[usize],
-        catalog_obj: usize,
-    ) -> Vec<u8> {
+    fn build(&mut self, pages_obj: usize, page_objs: &[usize], catalog_obj: usize) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n");
 
@@ -284,8 +276,7 @@ fn build_pdf(text: &str, date: &str) -> Result<Vec<u8>, std::fmt::Error> {
     let all_lines = wrap_lines(text, max_chars_per_line);
 
     // Calculate how many lines fit per page (first page has title)
-    let first_page_lines =
-        ((usable_height - title_height - 20.0) / line_height) as usize;
+    let first_page_lines = ((usable_height - title_height - 20.0) / line_height) as usize;
     let normal_page_lines = (usable_height / line_height) as usize;
 
     // Split into pages
@@ -305,14 +296,12 @@ fn build_pdf(text: &str, date: &str) -> Result<Vec<u8>, std::fmt::Error> {
     }
 
     // Object 1: Font (Helvetica)
-    let font_obj = pdf.add_object(
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
-    );
+    let font_obj =
+        pdf.add_object(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec());
 
     // Object 2: Bold font (Helvetica-Bold)
-    let font_bold_obj = pdf.add_object(
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec(),
-    );
+    let font_bold_obj =
+        pdf.add_object(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec());
 
     // Reserve pages object number (we'll fill it in later)
     let pages_placeholder = pdf.add_object(b"<< >>".to_vec());
@@ -414,12 +403,7 @@ fn build_pdf(text: &str, date: &str) -> Result<Vec<u8>, std::fmt::Error> {
         // Content stream object
         let stream_len = stream.len();
         let mut stream_obj = Vec::new();
-        write!(
-            stream_obj,
-            "<< /Length {} >>\nstream\n",
-            stream_len
-        )
-        .unwrap();
+        write!(stream_obj, "<< /Length {} >>\nstream\n", stream_len).unwrap();
         stream_obj.extend_from_slice(&stream);
         stream_obj.extend_from_slice(b"\nendstream");
         let content_obj = pdf.add_object(stream_obj);
@@ -459,10 +443,7 @@ fn build_pdf(text: &str, date: &str) -> Result<Vec<u8>, std::fmt::Error> {
     pdf.objects[pages_placeholder - 1] = pages_data.into_bytes();
 
     // Catalog object
-    let catalog_data = format!(
-        "<< /Type /Catalog /Pages {} 0 R >>",
-        pages_placeholder
-    );
+    let catalog_data = format!("<< /Type /Catalog /Pages {} 0 R >>", pages_placeholder);
     let catalog_obj = pdf.add_object(catalog_data.into_bytes());
 
     Ok(pdf.build(pages_placeholder, &page_objs, catalog_obj))
@@ -479,7 +460,12 @@ fn is_section_header(line: &str) -> bool {
     }
     // ALL CAPS lines (with at least 3 alpha chars)
     let alpha_count = line.chars().filter(|c| c.is_ascii_alphabetic()).count();
-    if alpha_count >= 3 && line.chars().filter(|c| c.is_ascii_alphabetic()).all(|c| c.is_ascii_uppercase()) {
+    if alpha_count >= 3
+        && line
+            .chars()
+            .filter(|c| c.is_ascii_alphabetic())
+            .all(|c| c.is_ascii_uppercase())
+    {
         return true;
     }
     // Lines ending with colon that look like headers
@@ -518,7 +504,8 @@ mod tests {
 
     #[test]
     fn test_wrap_lines() {
-        let text = "this is a very long line that should definitely be wrapped at some reasonable point";
+        let text =
+            "this is a very long line that should definitely be wrapped at some reasonable point";
         let wrapped = wrap_lines(text, 30);
         assert!(wrapped.len() > 1);
         for line in &wrapped {

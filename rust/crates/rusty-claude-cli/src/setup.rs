@@ -29,18 +29,66 @@ struct Model {
 }
 
 const MODELS: &[Model] = &[
-    Model { key: "a", id: "tripolskypetr/qwen3.5-uncensored-aggressive:4b",   name: "Qwen3.5-4B Uncensored",             size: "~3GB",  min_ram: 4  },
-    Model { key: "b", id: "tripolskypetr/qwen3.5-uncensored-aggressive:8b",   name: "Qwen3.5-8B Uncensored",             size: "~5GB",  min_ram: 8  },
-    Model { key: "c", id: "tripolskypetr/qwen3.5-uncensored-aggressive:14b",  name: "Qwen3.5-14B Uncensored",            size: "~9GB",  min_ram: 12 },
-    Model { key: "d", id: "tripolskypetr/qwen3.5-uncensored-aggressive:32b",  name: "Qwen3.5-32B Uncensored",            size: "~19GB", min_ram: 24 },
-    Model { key: "e", id: "tripolskypetr/qwen3.5-uncensored-aggressive:35b",  name: "Qwen3.5-35B-A3B Uncensored (MoE)",  size: "~21GB", min_ram: 24 },
-    Model { key: "f", id: "vaultbox/qwen3.5-uncensored:35b",                  name: "Qwen3.5-35B Uncensored + Vision",   size: "~23GB", min_ram: 32 },
+    Model {
+        key: "a",
+        id: "tripolskypetr/qwen3.5-uncensored-aggressive:4b",
+        name: "Qwen3.5-4B Uncensored",
+        size: "~3GB",
+        min_ram: 4,
+    },
+    Model {
+        key: "b",
+        id: "tripolskypetr/qwen3.5-uncensored-aggressive:8b",
+        name: "Qwen3.5-8B Uncensored",
+        size: "~5GB",
+        min_ram: 8,
+    },
+    Model {
+        key: "c",
+        id: "tripolskypetr/qwen3.5-uncensored-aggressive:14b",
+        name: "Qwen3.5-14B Uncensored",
+        size: "~9GB",
+        min_ram: 12,
+    },
+    Model {
+        key: "d",
+        id: "tripolskypetr/qwen3.5-uncensored-aggressive:32b",
+        name: "Qwen3.5-32B Uncensored",
+        size: "~19GB",
+        min_ram: 24,
+    },
+    Model {
+        key: "e",
+        id: "tripolskypetr/qwen3.5-uncensored-aggressive:35b",
+        name: "Qwen3.5-35B-A3B Uncensored (MoE)",
+        size: "~21GB",
+        min_ram: 24,
+    },
+    Model {
+        key: "f",
+        id: "vaultbox/qwen3.5-uncensored:35b",
+        name: "Qwen3.5-35B Uncensored + Vision",
+        size: "~23GB",
+        min_ram: 32,
+    },
 ];
 
 const BREW_TOOLS: &[&str] = &[
-    "nmap", "masscan", "whois", "gobuster", "nikto", "hydra",
-    "john-jumbo", "hashcat", "sqlmap", "whatweb", "ffuf",
-    "binwalk", "exiftool", "socat", "netcat",
+    "nmap",
+    "masscan",
+    "whois",
+    "gobuster",
+    "nikto",
+    "hydra",
+    "john-jumbo",
+    "hashcat",
+    "sqlmap",
+    "whatweb",
+    "ffuf",
+    "binwalk",
+    "exiftool",
+    "socat",
+    "netcat",
 ];
 
 const PIP_TOOLS: &[&str] = &["impacket", "wpscan", "dnsrecon"];
@@ -95,7 +143,8 @@ fn get_gpu() -> String {
 }
 
 fn missing_tools(tools: &[&str]) -> Vec<String> {
-    tools.iter()
+    tools
+        .iter()
         .filter(|t| {
             let binary = if **t == "john-jumbo" { "john" } else { t };
             !which(binary)
@@ -113,7 +162,11 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
     let gpu = get_gpu();
 
     println!("  {DIM}GPU:{RESET}  {gpu} ({ram_gb}GB)");
-    println!("  {DIM}Platform:{RESET} {} ({})", env::consts::OS, env::consts::ARCH);
+    println!(
+        "  {DIM}Platform:{RESET} {} ({})",
+        env::consts::OS,
+        env::consts::ARCH
+    );
     println!();
 
     // Step 1: Check Ollama
@@ -127,7 +180,10 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
             run_cmd(platform::ollama_install_command());
         }
         if !which("ollama") {
-            println!("  {DIM}If automatic install failed: {}{RESET}", platform::ollama_install_hint());
+            println!(
+                "  {DIM}If automatic install failed: {}{RESET}",
+                platform::ollama_install_hint()
+            );
         }
     }
     println!();
@@ -135,8 +191,15 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
     // Step 2: Model selection
     println!("{GREEN}[Step 2/3]{RESET} {BOLD}AI Model{RESET}");
     // Pick the largest model that fits in available RAM.
-    let recommended = MODELS.iter().rev().find(|m| m.min_ram <= ram_gb).unwrap_or(&MODELS[0]);
-    println!("  {GREEN}Recommended:{RESET} {BOLD}{}{RESET} ({})", recommended.name, recommended.size);
+    let recommended = MODELS
+        .iter()
+        .rev()
+        .find(|m| m.min_ram <= ram_gb)
+        .unwrap_or(&MODELS[0]);
+    println!(
+        "  {GREEN}Recommended:{RESET} {BOLD}{}{RESET} ({})",
+        recommended.name, recommended.size
+    );
     println!();
     for m in MODELS {
         let rec = if m.key == recommended.key {
@@ -144,14 +207,21 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             String::new()
         };
-        println!("  {BOLD}[{}]{RESET} {:35} {DIM}{:8} min {}GB RAM{RESET}{rec}", m.key, m.name, m.size, m.min_ram);
+        println!(
+            "  {BOLD}[{}]{RESET} {:35} {DIM}{:8} min {}GB RAM{RESET}{rec}",
+            m.key, m.name, m.size, m.min_ram
+        );
     }
     println!("  {BOLD}[h]{RESET} Pull any model from HuggingFace");
     println!("  {BOLD}[s]{RESET} Skip model download");
     println!();
 
     let choice = ask(&format!("  {GREEN}>{RESET} "));
-    let choice = if choice.is_empty() { recommended.key.to_string() } else { choice };
+    let choice = if choice.is_empty() {
+        recommended.key.to_string()
+    } else {
+        choice
+    };
 
     let model_id: String;
 
@@ -184,7 +254,8 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
             model_id = hf_ollama_id;
         }
     } else {
-        model_id = MODELS.iter()
+        model_id = MODELS
+            .iter()
             .find(|m| m.key == choice)
             .map(|m| m.id.to_string())
             .unwrap_or_else(|| recommended.id.to_string());
@@ -201,19 +272,24 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
         let modelfile_path = config_dir().join("Modelfile");
         let _ = fs::create_dir_all(config_dir());
         let _ = fs::write(&modelfile_path, &modelfile);
-        run_cmd(&format!("ollama create hackcode-uncensored -f \"{}\"", modelfile_path.display()));
+        run_cmd(&format!(
+            "ollama create hackcode-uncensored -f \"{}\"",
+            modelfile_path.display()
+        ));
         println!("  {GREEN}✓{RESET} Model ready as {BOLD}hackcode-uncensored{RESET}");
     }
 
     // For HuggingFace models, create alias with the pulled model
     if choice == "h" && which("ollama") && !model_id.is_empty() {
-        let modelfile = format!(
-            "FROM {model_id}\nPARAMETER temperature 0.7\nPARAMETER num_ctx 32768\n"
-        );
+        let modelfile =
+            format!("FROM {model_id}\nPARAMETER temperature 0.7\nPARAMETER num_ctx 32768\n");
         let modelfile_path = config_dir().join("Modelfile");
         let _ = fs::create_dir_all(config_dir());
         let _ = fs::write(&modelfile_path, &modelfile);
-        run_cmd(&format!("ollama create hackcode-uncensored -f \"{}\"", modelfile_path.display()));
+        run_cmd(&format!(
+            "ollama create hackcode-uncensored -f \"{}\"",
+            modelfile_path.display()
+        ));
         println!("  {GREEN}✓{RESET} Model ready as {BOLD}hackcode-uncensored{RESET}");
     }
 
@@ -233,10 +309,17 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             println!("\n  Missing: {}", missing.join(", "));
             println!("  {DIM}Command: brew install {}{RESET}", missing.join(" "));
-            let answer = ask(&format!("\n  Install {} tools via Homebrew? [Y/n] ", missing.len()));
+            let answer = ask(&format!(
+                "\n  Install {} tools via Homebrew? [Y/n] ",
+                missing.len()
+            ));
             if answer.to_lowercase() != "n" {
                 for (i, pkg) in missing.iter().enumerate() {
-                    println!("  {GREEN}[{}/{}]{RESET} Installing {BOLD}{pkg}{RESET}...", i + 1, missing.len());
+                    println!(
+                        "  {GREEN}[{}/{}]{RESET} Installing {BOLD}{pkg}{RESET}...",
+                        i + 1,
+                        missing.len()
+                    );
                     run_cmd(&format!("brew install {pkg}"));
                 }
             }
@@ -268,8 +351,14 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
             if missing_pkgs.is_empty() {
                 println!("  {GREEN}✓{RESET} Common tools installed");
             } else {
-                println!("\n  Missing tools available without admin: {}",
-                    missing_pkgs.iter().map(|(b, _)| **b).collect::<Vec<_>>().join(", "));
+                println!(
+                    "\n  Missing tools available without admin: {}",
+                    missing_pkgs
+                        .iter()
+                        .map(|(b, _)| **b)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
                 let cmd = if has_winget {
                     let pkgs: Vec<String> = missing_pkgs
                         .drain(..)
@@ -293,12 +382,8 @@ pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
                 "  {DIM}Install winget (ships with Windows 10/11) or scoop ({BOLD}https://scoop.sh{RESET}{DIM}) to auto-install common security tools per-user (no admin needed).{RESET}"
             );
         }
-        println!(
-            "  {DIM}For the full Kali toolchain on Windows, install Kali via WSL:{RESET}"
-        );
-        println!(
-            "  {BOLD}wsl --install -d kali-linux{RESET}"
-        );
+        println!("  {DIM}For the full Kali toolchain on Windows, install Kali via WSL:{RESET}");
+        println!("  {BOLD}wsl --install -d kali-linux{RESET}");
     } else if which("apt") {
         println!("  {DIM}Install tools with: sudo apt install nmap gobuster nikto hydra sqlmap ...{RESET}");
     }

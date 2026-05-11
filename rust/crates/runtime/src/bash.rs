@@ -270,8 +270,23 @@ fn prepare_command(
         return prepared;
     }
 
-    let mut prepared = Command::new("sh");
-    prepared.arg("-lc").arg(command).current_dir(cwd);
+    #[cfg(windows)]
+    let mut prepared = {
+        // Windows ships neither `sh` nor `/bin/bash`. Use `cmd /C` so the
+        // `bash` tool degrades to the native shell on stock Windows 10/11
+        // without needing Git Bash, WSL, or Cygwin. The Linux sandbox path
+        // above is the preferred route on Linux; we only hit this branch on
+        // Windows or when the sandbox is disabled.
+        let mut prepared = Command::new("cmd");
+        prepared.arg("/C").arg(command).current_dir(cwd);
+        prepared
+    };
+    #[cfg(not(windows))]
+    let mut prepared = {
+        let mut prepared = Command::new("sh");
+        prepared.arg("-lc").arg(command).current_dir(cwd);
+        prepared
+    };
     if sandbox_status.filesystem_active {
         prepared.env("HOME", cwd.join(".sandbox-home"));
         prepared.env("TMPDIR", cwd.join(".sandbox-tmp"));
@@ -297,8 +312,18 @@ fn prepare_tokio_command(
         return prepared;
     }
 
-    let mut prepared = TokioCommand::new("sh");
-    prepared.arg("-lc").arg(command).current_dir(cwd);
+    #[cfg(windows)]
+    let mut prepared = {
+        let mut prepared = TokioCommand::new("cmd");
+        prepared.arg("/C").arg(command).current_dir(cwd);
+        prepared
+    };
+    #[cfg(not(windows))]
+    let mut prepared = {
+        let mut prepared = TokioCommand::new("sh");
+        prepared.arg("-lc").arg(command).current_dir(cwd);
+        prepared
+    };
     if sandbox_status.filesystem_active {
         prepared.env("HOME", cwd.join(".sandbox-home"));
         prepared.env("TMPDIR", cwd.join(".sandbox-tmp"));
@@ -311,7 +336,10 @@ fn prepare_sandbox_dirs(cwd: &std::path::Path) {
     let _ = std::fs::create_dir_all(cwd.join(".sandbox-tmp"));
 }
 
-#[cfg(test)]
+// The `bash` tool degrades to `cmd /C` on Windows because there is no
+// `/bin/sh`. These tests assume POSIX `printf` semantics, so they only run
+// on Unix targets. Windows uses the `PowerShell` tool for shell execution.
+#[cfg(all(test, unix))]
 mod tests {
     use super::{execute_bash, BashCommandInput};
     use crate::sandbox::FilesystemIsolationMode;

@@ -1,10 +1,10 @@
 use std::fmt::Write as FmtWrite;
 use std::io::{self, Write};
 
-use crossterm::cursor::{MoveToColumn, MoveTo, SavePosition, RestorePosition, position};
+use crossterm::cursor::{position, MoveTo, MoveToColumn, RestorePosition, SavePosition};
+use crossterm::execute;
 use crossterm::style::{Color, Print, ResetColor, SetForegroundColor, Stylize};
 use crossterm::terminal::{Clear, ClearType};
-use crossterm::execute;
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Theme, ThemeSet};
@@ -45,12 +45,10 @@ impl Default for ColorTheme {
 }
 
 /// Global flag to stop the spinner from anywhere (e.g. when streaming begins).
-static SPINNER_ACTIVE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static SPINNER_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Row where the spinner should render (set when tick() is called).
-static SPINNER_ROW: std::sync::atomic::AtomicU16 =
-    std::sync::atomic::AtomicU16::new(0);
+static SPINNER_ROW: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
 
 /// Guard against clearing the spinner row twice — the second clear would wipe
 /// the AI response that was printed on the same row after streaming started.
@@ -162,10 +160,7 @@ impl Spinner {
     /// Stop the spinner from outside (e.g. when streaming begins).
     /// Returns `true` if the spinner was actually running.
     pub fn stop_global() -> bool {
-        let was_active = SPINNER_ACTIVE.swap(
-            false,
-            std::sync::atomic::Ordering::SeqCst,
-        );
+        let was_active = SPINNER_ACTIVE.swap(false, std::sync::atomic::Ordering::SeqCst);
         if was_active {
             // Brief pause so the spinner thread finishes its current frame
             std::thread::sleep(std::time::Duration::from_millis(50));
