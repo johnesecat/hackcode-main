@@ -224,7 +224,14 @@ if (-not $installed) {
         if (Test-Path (Join-Path $SrcDir '.git')) {
             Info "Updating existing source checkout at $SrcDir"
             git -C $SrcDir fetch --quiet origin 2>$null | Out-Null
+            $fetchExit = $LASTEXITCODE
+            if ($fetchExit -ne 0) {
+                Info "git fetch failed (exit code $fetchExit); building from existing checkout"
+            }
             git -C $SrcDir reset --quiet --hard origin/HEAD 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "git reset failed with exit code $LASTEXITCODE"
+            }
         } else {
             if (Test-Path $SrcDir) { Remove-Item $SrcDir -Recurse -Force }
             Info "Cloning https://github.com/$Repo.git into $SrcDir"
