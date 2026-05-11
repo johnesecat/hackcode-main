@@ -45,6 +45,26 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Render UTF-8 box-drawing glyphs correctly on Windows PowerShell 5.1's
+# default OEM code page console.
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
+# Resolve a repo checkout next to the running script. `$PSScriptRoot` is empty
+# when the script is piped through `iex`, so guard every consumer with this
+# helper rather than calling `Join-Path $PSScriptRoot ...` directly.
+function Get-LocalCheckoutDir {
+    if (-not [string]::IsNullOrEmpty($PSScriptRoot)) { return $PSScriptRoot }
+    if ($PSCommandPath) {
+        $parent = Split-Path -Parent $PSCommandPath
+        if (-not [string]::IsNullOrEmpty($parent)) { return $parent }
+    }
+    if ($MyInvocation -and $MyInvocation.MyCommand -and $MyInvocation.MyCommand.Path) {
+        $parent = Split-Path -Parent $MyInvocation.MyCommand.Path
+        if (-not [string]::IsNullOrEmpty($parent)) { return $parent }
+    }
+    return $null
+}
+
 $Repo = 'johnesecat/hackcode-main'
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\HackCode'
 $BinaryPath = Join-Path $InstallDir 'hackcode.exe'
@@ -52,11 +72,15 @@ $ConfigDir = Join-Path $env:APPDATA 'hackcode'
 $SrcDir = Join-Path $env:USERPROFILE '.hackcode-src'
 
 # ─── Pretty printing ───────────────────────────────────────
-$Green = "`e[38;2;0;255;65m"
-$Dim = "`e[90m"
-$Bold = "`e[1m"
-$Red = "`e[91m"
-$Nc = "`e[0m"
+# `e is only an ESC literal in PowerShell 6+. Build it explicitly so the
+# colors render in stock Windows PowerShell 5.1 too (Win10/11 ConsoleHost
+# supports virtual-terminal sequences when ANSI is emitted directly).
+$ESC = [char]27
+$Green = "$ESC[38;2;0;255;65m"
+$Dim = "$ESC[90m"
+$Bold = "$ESC[1m"
+$Red = "$ESC[91m"
+$Nc = "$ESC[0m"
 
 function Write-Banner {
     Write-Host ''
@@ -180,16 +204,34 @@ if (-not $installed) {
     }
 
     # If we're already inside a checkout, build right here. Otherwise clone
-    # to a per-user source dir and build from there.
-    $localManifest = Join-Path $PSScriptRoot 'rust\Cargo.toml'
-    if (Test-Path $localManifest) {
-        $buildDir = Join-Path $PSScriptRoot 'rust'
-    } else {
+    # to a per-user source dir and build from there. When piped through `iex`
+    # there is no script directory, so the helper returns $null and we fall
+    # straight through to the clone path.
+    $checkoutDir = Get-LocalCheckoutDir
+    $buildDir = $null
+    if ($checkoutDir) {
+        $localManifest = Join-Path $checkoutDir 'rust\Cargo.toml'
+        if (Test-Path $localManifest) {
+            $buildDir = Join-Path $checkoutDir 'rust'
+        }
+    }
+    if (-not $buildDir) {
+        if (-not (Test-Command 'git')) {
+            Fail 'git is required to fetch HackCode source.'
+            Info 'Install with `winget install Git.Git` or download from https://git-scm.com/download/win, then re-run this installer.'
+            throw 'git not available'
+        }
         if (Test-Path (Join-Path $SrcDir '.git')) {
-            git -C $SrcDir pull --quiet 2>$null | Out-Null
+            Info "Updating existing source checkout at $SrcDir"
+            git -C $SrcDir fetch --quiet origin 2>$null | Out-Null
+            git -C $SrcDir reset --quiet --hard origin/HEAD 2>$null | Out-Null
         } else {
             if (Test-Path $SrcDir) { Remove-Item $SrcDir -Recurse -Force }
+            Info "Cloning https://github.com/$Repo.git into $SrcDir"
             git clone --quiet "https://github.com/$Repo.git" $SrcDir
+            if ($LASTEXITCODE -ne 0) {
+                throw "git clone failed with exit code $LASTEXITCODE"
+            }
         }
         $buildDir = Join-Path $SrcDir 'rust'
     }
