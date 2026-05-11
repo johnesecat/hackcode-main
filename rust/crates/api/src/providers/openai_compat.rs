@@ -75,7 +75,7 @@ impl OpenAiCompatConfig {
     /// Alibaba `DashScope` compatible-mode endpoint (Qwen family models).
     /// Uses the OpenAI-compatible REST shape at /compatible-mode/v1.
     /// Requested via Discord #hackcode-get-help: native Alibaba API for
-    /// higher rate limits than going through OpenRouter.
+    /// higher rate limits than going through `OpenRouter`.
     #[must_use]
     pub const fn dashscope() -> Self {
         Self {
@@ -159,8 +159,8 @@ impl OpenAiCompatClient {
     /// Like `from_env` but uses a dummy key when the env var is unset.
     /// Used for Ollama which does not require API key authentication.
     pub fn from_env_optional_key(config: OpenAiCompatConfig) -> Result<Self, ApiError> {
-        let api_key = read_env_non_empty(config.api_key_env)?
-            .unwrap_or_else(|| "ollama".to_string());
+        let api_key =
+            read_env_non_empty(config.api_key_env)?.unwrap_or_else(|| "ollama".to_string());
         Ok(Self::new(api_key, config))
     }
 
@@ -352,8 +352,9 @@ fn jitter_for_base(base: Duration) -> Duration {
     }
     let raw_nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|elapsed| u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX))
-        .unwrap_or(0);
+        .map_or(0, |elapsed| {
+            u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX)
+        });
     let tick = JITTER_COUNTER.fetch_add(1, Ordering::Relaxed);
     let mut mixed = raw_nanos
         .wrapping_add(tick)
@@ -488,6 +489,7 @@ impl StreamState {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn ingest_chunk(&mut self, chunk: ChatCompletionChunk) -> Result<Vec<StreamEvent>, ApiError> {
         let mut events = Vec::new();
         if !self.message_started {
@@ -880,7 +882,7 @@ pub fn is_reasoning_model(model: &str) -> bool {
         || canonical.contains("thinking")
 }
 
-/// Returns true for OpenAI-compatible DeepSeek V4 models that require prior
+/// Returns true for OpenAI-compatible `DeepSeek` V4 models that require prior
 /// assistant reasoning to be echoed back as `reasoning_content` in history.
 #[must_use]
 pub fn model_requires_reasoning_content_in_history(model: &str) -> bool {
@@ -1108,8 +1110,7 @@ pub fn translate_message(message: &InputMessage, model: &str) -> Vec<Value> {
                     }
                     Some(msg)
                 }
-                InputContentBlock::Thinking { .. } => None,
-                InputContentBlock::ToolUse { .. } => None,
+                InputContentBlock::Thinking { .. } | InputContentBlock::ToolUse { .. } => None,
             })
             .collect(),
     }

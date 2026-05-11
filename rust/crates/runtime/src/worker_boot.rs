@@ -863,7 +863,7 @@ struct StateSnapshot<'a> {
 
 fn emit_state_file(worker: &Worker) {
     let state_dir = std::path::Path::new(&worker.cwd).join(".hackcode");
-    if let Err(_) = std::fs::create_dir_all(&state_dir) {
+    if std::fs::create_dir_all(&state_dir).is_err() {
         return;
     }
     let state_path = state_dir.join("worker-state.json");

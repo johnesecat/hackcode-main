@@ -59,29 +59,33 @@ One command. That's it.
 **macOS / Linux** (bash):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/itwizardo/hackcode/dev/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/johnesecat/hackcode-main/dev/install.sh | bash
 ```
 
 **Windows 10 / 11** (native PowerShell — no admin, no WSL, no Cygwin required):
 
 ```powershell
-iwr https://raw.githubusercontent.com/itwizardo/hackcode/dev/install.ps1 | iex
+iwr https://raw.githubusercontent.com/johnesecat/hackcode-main/dev/install.ps1 | iex
 ```
+
+Behind a corporate proxy or on a network that filters GitHub (Zscaler, school
+firewalls, etc.)? See [INSTALL.md](INSTALL.md) for the offline / proxy /
+`-OfflineSource` workflows.
 
 Or build from source:
 
 ```bash
 # macOS / Linux
-git clone https://github.com/itwizardo/hackcode.git
-cd hackcode/rust
+git clone https://github.com/johnesecat/hackcode-main.git
+cd hackcode-main/rust
 cargo build --release -p rusty-claude-cli
 cp target/release/hackcode ~/.local/bin/
 ```
 
 ```powershell
 # Windows (PowerShell)
-git clone https://github.com/itwizardo/hackcode.git
-cd hackcode\rust
+git clone https://github.com/johnesecat/hackcode-main.git
+cd hackcode-main\rust
 cargo build --release -p rusty-claude-cli
 $dst = "$env:LOCALAPPDATA\Programs\HackCode"
 New-Item -ItemType Directory -Path $dst -Force | Out-Null
@@ -402,8 +406,8 @@ That's it. It pulls the latest source from the `dev` branch, rebuilds the Rust b
 If auto-update fails (network issues, build errors, etc.), update manually:
 
 ```bash
-git clone --branch dev https://github.com/itwizardo/hackcode.git
-cd hackcode/rust
+git clone --branch dev https://github.com/johnesecat/hackcode-main.git
+cd hackcode-main/rust
 cargo build --release -p rusty-claude-cli
 cp target/release/hackcode ~/.local/bin/
 ```
@@ -449,5 +453,5 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 <p align="center">
   <strong>They built the most powerful hacking AI ever made and locked it away.<br>We built one you can actually use.</strong><br><br>
-  <code>curl -fsSL https://raw.githubusercontent.com/itwizardo/hackcode/dev/install.sh | bash</code>
+  <code>curl -fsSL https://raw.githubusercontent.com/johnesecat/hackcode-main/dev/install.sh | bash</code>
 </p>

@@ -58,7 +58,8 @@ use runtime::{
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use tools::{
-    execute_tool, hackcode_tool_specs, mvp_tool_specs, GlobalToolRegistry, RuntimeToolDefinition, ToolSearchOutput,
+    execute_tool, hackcode_tool_specs, mvp_tool_specs, GlobalToolRegistry, RuntimeToolDefinition,
+    ToolSearchOutput,
 };
 
 const DEFAULT_MODEL: &str = "hackcode-uncensored";
@@ -1690,7 +1691,7 @@ fn check_for_updates_async() {
         let output = std::process::Command::new("git")
             .args([
                 "ls-remote",
-                "https://github.com/itwizardo/hackcode.git",
+                "https://github.com/johnesecat/hackcode-main.git",
                 "refs/heads/dev",
             ])
             .stdout(std::process::Stdio::piped())
@@ -1726,14 +1727,33 @@ fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("  {dim}Pulling latest...{nc}");
         // Fetch and hard-reset to avoid divergent branch errors
         let fetch = Command::new("git")
-            .args(["-C", &src_dir.to_string_lossy(), "fetch", "origin", "dev", "--quiet"])
+            .args([
+                "-C",
+                &src_dir.to_string_lossy(),
+                "fetch",
+                "origin",
+                "dev",
+                "--quiet",
+            ])
             .status();
         if fetch.map_or(false, |s| s.success()) {
             let _ = Command::new("git")
-                .args(["-C", &src_dir.to_string_lossy(), "checkout", "dev", "--quiet"])
+                .args([
+                    "-C",
+                    &src_dir.to_string_lossy(),
+                    "checkout",
+                    "dev",
+                    "--quiet",
+                ])
                 .status();
             let _ = Command::new("git")
-                .args(["-C", &src_dir.to_string_lossy(), "reset", "--hard", "origin/dev"])
+                .args([
+                    "-C",
+                    &src_dir.to_string_lossy(),
+                    "reset",
+                    "--hard",
+                    "origin/dev",
+                ])
                 .status();
         } else {
             // If fetch fails, re-clone
@@ -1742,8 +1762,9 @@ fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
                 .args([
                     "clone",
                     "--quiet",
-                    "--branch", "dev",
-                    "https://github.com/itwizardo/hackcode.git",
+                    "--branch",
+                    "dev",
+                    "https://github.com/johnesecat/hackcode-main.git",
                     &src_dir.to_string_lossy(),
                 ])
                 .status()?;
@@ -1758,8 +1779,9 @@ fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
             .args([
                 "clone",
                 "--quiet",
-                "--branch", "dev",
-                "https://github.com/itwizardo/hackcode.git",
+                "--branch",
+                "dev",
+                "https://github.com/johnesecat/hackcode-main.git",
                 &src_dir.to_string_lossy(),
             ])
             .status()?;
@@ -1791,7 +1813,13 @@ fn run_self_update() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get the new SHA
     let new_sha = Command::new("git")
-        .args(["-C", &src_dir.to_string_lossy(), "rev-parse", "--short", "HEAD"])
+        .args([
+            "-C",
+            &src_dir.to_string_lossy(),
+            "rev-parse",
+            "--short",
+            "HEAD",
+        ])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
@@ -1811,8 +1839,14 @@ fn hackcode_config() -> Option<(Option<String>, Option<String>)> {
     let config_path = platform::config_dir().join("config.json");
     let raw = fs::read_to_string(&config_path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let model = parsed.get("model").and_then(|v| v.as_str()).map(String::from);
-    let base_url = parsed.get("baseURL").and_then(|v| v.as_str()).map(String::from);
+    let model = parsed
+        .get("model")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let base_url = parsed
+        .get("baseURL")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     Some((model, base_url))
 }
 
@@ -4801,11 +4835,7 @@ impl LiveCli {
         let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(true)?;
         let mut spinner = Spinner::new();
         let mut stdout = io::stdout();
-        spinner.tick(
-            "",
-            TerminalRenderer::new().color_theme(),
-            &mut stdout,
-        )?;
+        spinner.tick("", TerminalRenderer::new().color_theme(), &mut stdout)?;
         let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
         let result = runtime.run_turn(input, Some(&mut permission_prompter));
         hook_abort_monitor.stop();
@@ -9176,9 +9206,7 @@ fn format_read_result(icon: &str, parsed: &serde_json::Value) -> String {
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(num_lines);
     // Compact: just show file path and line count, no content dump
-    format!(
-        "{icon} \x1b[2mRead {path} ({total_lines} lines)\x1b[0m"
-    )
+    format!("{icon} \x1b[2mRead {path} ({total_lines} lines)\x1b[0m")
 }
 
 fn format_write_result(icon: &str, parsed: &serde_json::Value) -> String {
@@ -9744,7 +9772,10 @@ fn print_help_to(out: &mut impl Write) -> io::Result<()> {
     writeln!(out, "  hackcodeagents")?;
     writeln!(out, "  hackcodemcp")?;
     writeln!(out, "  hackcodeskills")?;
-    writeln!(out, "  hackcodesystem-prompt [--cwd PATH] [--date YYYY-MM-DD]")?;
+    writeln!(
+        out,
+        "  hackcodesystem-prompt [--cwd PATH] [--date YYYY-MM-DD]"
+    )?;
     writeln!(out, "  hackcodelogin")?;
     writeln!(out, "  hackcodelogout")?;
     writeln!(out, "  hackcodeinit")?;

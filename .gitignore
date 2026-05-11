@@ -9,4 +9,8 @@ archive/
 .claw/settings.local.json
 .claw/sessions/
 .clawhip/
+# HackCode runtime artifacts (worker state, agent JSON, etc.)
+.hackcode/
+.hackcode-agents/
+.hackcode-src/
 status-help.txt

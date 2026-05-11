@@ -1179,7 +1179,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
     ]
 }
 
-/// Tool names that HackCode exposes to the AI model.
+/// Tool names that `HackCode` exposes to the AI model.
 /// This is a reduced surface focused on pentesting workflows:
 /// bash, file ops, search, web access, and agent delegation.
 const HACKCODE_TOOLS: &[&str] = &[
@@ -1195,8 +1195,9 @@ const HACKCODE_TOOLS: &[&str] = &[
     "AskUserQuestion",
 ];
 
-/// Returns only the tools relevant for HackCode's pentesting workflow.
+/// Returns only the tools relevant for `HackCode`'s pentesting workflow.
 /// This is a subset of `mvp_tool_specs()` — 10 tools instead of 50.
+#[must_use]
 pub fn hackcode_tool_specs() -> Vec<ToolSpec> {
     mvp_tool_specs()
         .into_iter()
@@ -2025,8 +2026,7 @@ fn git_ref_exists(reference: &str) -> bool {
     Command::new("git")
         .args(["rev-parse", "--verify", "--quiet", reference])
         .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|output| output.status.success())
 }
 
 fn git_stdout(args: &[&str]) -> Option<String> {
@@ -4720,7 +4720,10 @@ async fn stream_with_provider(
             },
             ApiStreamEvent::ContentBlockStop(stop) => {
                 if let Some((thinking, signature)) = pending_thinking.remove(&stop.index) {
-                    events.push(AssistantEvent::Thinking { thinking, signature });
+                    events.push(AssistantEvent::Thinking {
+                        thinking,
+                        signature,
+                    });
                 }
                 if let Some((id, name, input)) = pending_tools.remove(&stop.index) {
                     events.push(AssistantEvent::ToolUse { id, name, input });
@@ -4888,7 +4891,10 @@ fn push_output_block(
             if streaming_tool_input {
                 pending_thinking.insert(block_index, (thinking, signature));
             } else {
-                events.push(AssistantEvent::Thinking { thinking, signature });
+                events.push(AssistantEvent::Thinking {
+                    thinking,
+                    signature,
+                });
             }
         }
         OutputContentBlock::RedactedThinking { .. } => {}
@@ -6009,11 +6015,15 @@ fn command_exists(command: &str) -> bool {
     // Windows ships neither `sh` nor `command -v`, so use `where.exe` (which
     // is built into Windows 10/11 and resolvable in any PowerShell or cmd
     // session). Unix continues to use `sh -lc command -v` so login PATH
-    // augmentations from the user's profile keep working.
+    // augmentations from the user's profile keep working. Both branches
+    // suppress stdout/stderr so a probe doesn't print the resolved path or
+    // an error banner — we only care about the exit code.
     #[cfg(windows)]
     {
         std::process::Command::new("where")
             .arg(command)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .status()
             .map(|status| status.success())
             .unwrap_or(false)
@@ -6024,8 +6034,7 @@ fn command_exists(command: &str) -> bool {
             .arg("-lc")
             .arg(format!("command -v {command} >/dev/null 2>&1"))
             .status()
-            .map(|status| status.success())
-            .unwrap_or(false)
+            .is_ok_and(|status| status.success())
     }
 }
 
@@ -9316,12 +9325,16 @@ mod tests {
         assert_eq!(enter_output["previousLocalMode"], "acceptEdits");
         assert_eq!(enter_output["currentLocalMode"], "plan");
 
-        let local_settings = std::fs::read_to_string(cwd.join(".hackcode").join("settings.local.json"))
-            .expect("local settings after enter");
+        let local_settings =
+            std::fs::read_to_string(cwd.join(".hackcode").join("settings.local.json"))
+                .expect("local settings after enter");
         assert!(local_settings.contains(r#""defaultMode": "plan""#));
-        let state =
-            std::fs::read_to_string(cwd.join(".hackcode").join("tool-state").join("plan-mode.json"))
-                .expect("plan mode state");
+        let state = std::fs::read_to_string(
+            cwd.join(".hackcode")
+                .join("tool-state")
+                .join("plan-mode.json"),
+        )
+        .expect("plan mode state");
         assert!(state.contains(r#""hadLocalOverride": true"#));
         assert!(state.contains(r#""previousLocalMode": "acceptEdits""#));
 
@@ -9332,8 +9345,9 @@ mod tests {
         assert_eq!(exit_output["previousLocalMode"], "acceptEdits");
         assert_eq!(exit_output["currentLocalMode"], "acceptEdits");
 
-        let local_settings = std::fs::read_to_string(cwd.join(".hackcode").join("settings.local.json"))
-            .expect("local settings after exit");
+        let local_settings =
+            std::fs::read_to_string(cwd.join(".hackcode").join("settings.local.json"))
+                .expect("local settings after exit");
         assert!(local_settings.contains(r#""defaultMode": "acceptEdits""#));
         assert!(!cwd
             .join(".hackcode")
@@ -9387,8 +9401,9 @@ mod tests {
         assert_eq!(exit_output["changed"], true);
         assert_eq!(exit_output["currentLocalMode"], serde_json::Value::Null);
 
-        let local_settings = std::fs::read_to_string(cwd.join(".hackcode").join("settings.local.json"))
-            .expect("local settings after exit");
+        let local_settings =
+            std::fs::read_to_string(cwd.join(".hackcode").join("settings.local.json"))
+                .expect("local settings after exit");
         let local_settings_json: serde_json::Value =
             serde_json::from_str(&local_settings).expect("valid settings json");
         assert_eq!(

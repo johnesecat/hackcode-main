@@ -113,9 +113,7 @@ pub fn run_scanner() {
     } else {
         RED
     };
-    println!(
-        "  {color}{found}/{total}{RESET} tools available ({color}{pct}%{RESET})\n"
-    );
+    println!("  {color}{found}/{total}{RESET} tools available ({color}{pct}%{RESET})\n");
 
     if found < total {
         let missing: Vec<&str> = CATEGORIES

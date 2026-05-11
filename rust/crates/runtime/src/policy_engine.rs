@@ -2,7 +2,8 @@ use std::time::Duration;
 
 pub type GreenLevel = u8;
 
-const STALE_BRANCH_THRESHOLD: Duration = Duration::from_secs(60 * 60);
+#[allow(clippy::duration_suboptimal_units)]
+const STALE_BRANCH_THRESHOLD: Duration = Duration::from_secs(3600);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PolicyRule {
